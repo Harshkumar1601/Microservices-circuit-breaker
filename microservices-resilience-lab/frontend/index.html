@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Microservices Resilience Lab — Circuit Breaker Dashboard</title>
+  <meta name="description" content="Interactive dashboard demonstrating the Circuit Breaker pattern with Order Service and Inventory Service microservices. Practical-9 — MAP." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<header class="site-header" role="banner">
+  <h1><span>⚡</span> Microservices Resilience Lab</h1>
+  <div class="header-meta">
+    <span class="pill">Practical-9 · Circuit Breaker Pattern</span>
+    <div id="poll-indicator">
+      <span class="dot"></span>
+      <span>Live polling</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<main class="main-container" id="main-content">
+
+  <!-- ── Row 1: Service Status Cards ── -->
+  <div class="section-label">Service Status</div>
+  <div class="grid-3" id="status-row">
+
+    <!-- Order Service card -->
+    <div class="card">
+      <div class="status-card">
+        <span class="service-name">Microservice 1</span>
+        <span class="service-label">🛒 Order Service</span>
+        <span class="status-badge badge-checking" id="order-service-badge">Checking…</span>
+        <span class="port-tag">localhost:3001</span>
+      </div>
+    </div>
+
+    <!-- Inventory Service card -->
+    <div class="card">
+      <div class="status-card">
+        <span class="service-name">Microservice 2</span>
+        <span class="service-label">📦 Inventory Service</span>
+        <span class="status-badge badge-checking" id="inventory-service-badge">Checking…</span>
+        <span class="port-tag" id="inventory-sim-mode-tag">localhost:3002</span>
+      </div>
+    </div>
+
+    <!-- Circuit Breaker card -->
+    <div class="card">
+      <div class="status-card">
+        <span class="service-name">Protection Layer</span>
+        <span class="service-label">⚡ Circuit Breaker</span>
+        <div class="cb-state-display">
+          <span class="cb-icon" id="cb-icon">🔘</span>
+          <span class="cb-state-text cb-state-unknown" id="cb-state-text">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.grid-3 -->
+
+  <!-- ── Row 2: Order Panel + Simulation Controls ── -->
+  <div class="grid-2">
+
+    <!-- Place Order -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🛍️ Place Order</h2>
+      </div>
+      <div class="card-body">
+        <form class="order-form" id="order-form" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="product-select">Product</label>
+              <select id="product-select" name="productId" required>
+                <option value="P001">P001 — Wireless Keyboard ($45.99)</option>
+                <option value="P002">P002 — USB-C Monitor ($299.00)</option>
+                <option value="P003">P003 — Mechanical Mouse ($29.99)</option>
+                <option value="P004">P004 — Laptop Stand ($59.99)</option>
+                <option value="P005">P005 — Noise-Cancel Headset ($149.99)</option>
+              </select>
+            </div>
+            <div class="form-group" style="max-width:120px">
+              <label for="qty-input">Quantity</label>
+              <input id="qty-input" type="number" name="quantity" value="1" min="1" max="1000" required />
+            </div>
+          </div>
+
+          <button class="btn btn-primary" type="submit" id="place-order-btn">
+            🛒 Place Order
+          </button>
+        </form>
+
+        <div class="mt-12">
+          <div class="response-label">Last Response</div>
+          <pre class="response-box" id="order-response-box">Submit an order to see the response here.</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fault Simulation -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🎭 Fault Simulation</h2>
+        <span class="text-muted" style="font-size:0.75rem">Controls Inventory Service</span>
+      </div>
+      <div class="card-body">
+        <p style="font-size:0.82rem;color:var(--color-muted);margin-bottom:14px;">
+          These buttons call the Inventory Service's real simulation API to switch between operating modes.
+        </p>
+
+        <div class="sim-buttons">
+          <button class="btn btn-success" id="btn-sim-normal"
+            title="Inventory Service responds normally">✅ Normal</button>
+          <button class="btn btn-danger" id="btn-sim-failure"
+            title="Inventory Service returns HTTP 500 errors">❌ Failure</button>
+          <button class="btn btn-warning" id="btn-sim-slow"
+            title="Inventory Service delays responses (triggers timeout)">🐢 Slow</button>
+          <button class="btn btn-purple" id="btn-sim-recovery"
+            title="Restore normal operation">🔄 Recovery</button>
+        </div>
+
+        <div class="sim-feedback" id="sim-feedback"></div>
+
+        <div class="mt-12">
+          <div class="response-label">Current Inventory Mode</div>
+          <pre class="response-box" id="sim-mode-box" style="min-height:60px;font-size:0.8rem;">Fetching…</pre>
+        </div>
+
+        <div class="mt-12 flex-between gap-8">
+          <button class="btn btn-ghost btn-sm" id="btn-reset-cb">🔧 Reset Circuit Breaker</button>
+          <button class="btn btn-ghost btn-sm" id="btn-reset-metrics">📊 Reset Metrics</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.grid-2 -->
+
+  <!-- ── Row 3: CB Monitor ── -->
+  <div class="section-label">Circuit Breaker Monitor</div>
+  <div class="card grid-1">
+    <div class="card-header">
+      <h2>📊 Real-time Metrics</h2>
+      <span class="text-muted" style="font-size:0.75rem" id="metrics-updated">—</span>
+    </div>
+    <div class="card-body">
+
+      <!-- Config row -->
+      <div class="config-grid" style="margin-bottom:16px;" id="cb-config-grid">
+        <div class="config-row">
+          <span class="config-key">Timeout</span>
+          <span class="config-val" id="cfg-timeout">—</span>
+        </div>
+        <div class="config-row">
+          <span class="config-key">Error Threshold</span>
+          <span class="config-val" id="cfg-threshold">—</span>
+        </div>
+        <div class="config-row">
+          <span class="config-key">Reset Timeout</span>
+          <span class="config-val" id="cfg-reset">—</span>
+        </div>
+        <div class="config-row">
+          <span class="config-key">Volume Threshold</span>
+          <span class="config-val" id="cfg-volume">—</span>
+        </div>
+      </div>
+
+      <!-- Metrics tiles -->
+      <div class="metrics-grid" id="metrics-grid">
+        <div class="metric-tile">
+          <span class="metric-label">Total Requests</span>
+          <span class="metric-value" id="m-total">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Successful</span>
+          <span class="metric-value v-success" id="m-success">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Failed</span>
+          <span class="metric-value v-danger" id="m-failed">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Fallbacks</span>
+          <span class="metric-value v-purple" id="m-fallbacks">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Timeouts</span>
+          <span class="metric-value v-warning" id="m-timeouts">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Inventory Requests</span>
+          <span class="metric-value v-blue" id="m-inventory">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">CB Successes</span>
+          <span class="metric-value v-success" id="m-cb-success">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">CB Failures</span>
+          <span class="metric-value v-danger" id="m-cb-failures">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">CB Timeouts</span>
+          <span class="metric-value v-warning" id="m-cb-timeouts">—</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">CB Rejects</span>
+          <span class="metric-value v-purple" id="m-cb-rejects">—</span>
+        </div>
+      </div>
+    </div>
+  </div><!-- /.card -->
+
+  <!-- ── Row 4: Event Log + Request History ── -->
+  <div class="grid-2">
+
+    <!-- Event Log -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📋 Event Log</h2>
+        <button class="btn btn-ghost btn-sm" id="btn-clear-log">Clear</button>
+      </div>
+      <div class="card-body">
+        <div class="log-container" id="event-log" role="log" aria-live="polite">
+          <div class="log-empty">Events will appear here as you place orders.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Request History -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🕒 Request History</h2>
+        <button class="btn btn-ghost btn-sm" id="btn-clear-history">Clear</button>
+      </div>
+      <div class="card-body">
+        <div class="history-table-wrapper">
+          <table class="history-table" aria-label="Request history">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Outcome</th>
+                <th>CB State</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr>
+                <td colspan="5" style="text-align:center;color:var(--color-muted);padding:20px;">
+                  No requests yet.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.grid-2 -->
+
+</main><!-- /.main-container -->
+
+<!-- Toast container -->
+<div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
